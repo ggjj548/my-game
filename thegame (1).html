@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>משחק קפיצות - קוביה עם טיימר</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; background-color: #87CEEB; text-align: center; }
+        canvas { display: block; margin: auto; }
+        .controls { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 20px; }
+        .btn { width: 60px; height: 60px; background: rgba(0, 0, 0, 0.5); color: white; font-size: 24px; border: none; border-radius: 50%; }
+    </style>
+</head>
+<body>
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            physics: {
+                default: 'arcade',
+                arcade: { gravity: { y: 700 }, debug: false }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update,
+                gameOver: gameOver
+            }
+        };
+
+        const game = new Phaser.Game(config);
+        let player, cursors, platforms, leftPressed = false, rightPressed = false, jumpPressed = false;
+        let enemies, gameOverText, score = 0, timerText, timeElapsed = 0, timerEvent;
+
+        function preload() {
+            this.load.image('sky', 'https://www.transparenttextures.com/patterns/black-linen.png');  // רקע
+            this.load.image('ground', 'https://i.imgur.com/T0TXs6X.png'); // קרקע
+            this.load.image('enemy', 'https://upload.wikimedia.org/wikipedia/commons/5/57/Flat_tick_icon.svg'); // דימוי אויב
+        }
+
+        function create() {
+            this.add.image(400, 300, 'sky');  // רקע
+            platforms = this.physics.add.staticGroup();
+            platforms.create(400, 580, 'ground').setScale(2).refreshBody();  // קרקע
+
+            // דמות קוביה
+            player = this.physics.add.sprite(100, 450, null).setDisplaySize(32, 32);  // דמות קוביה בגודל 32x32
+            player.setBounce(0.2);
+            player.setCollideWorldBounds(true); // מוודא שהדמות לא תצא מחוץ למסך
+
+            this.physics.add.collider(player, platforms);  // יוצר התנגדות לקרקע
+
+            // יצירת אויבים
+            enemies = this.physics.add.group({
+                key: 'enemy',
+                repeat: 5,
+                setXY: { x: 200, y: 450, stepX: 150 }
+            });
+
+            // תנועת אויבים
+            enemies.children.iterate((enemy) => {
+                enemy.setVelocityX(100);  // כל אויב ינוע בכיוון X
+                enemy.setBounce(1);  // אויבים ייתקלו בקירות
+                enemy.setCollideWorldBounds(true);  // אויבים לא ייצאו מחוץ למסך
+            });
+
+            // פיזיקה בין דמות לאויבים
+            this.physics.add.collider(player, enemies, gameOver, null, this);
+
+            cursors = this.input.keyboard.createCursorKeys();
+
+            createControls();
+
+            // טקסט של סיום המשחק
+            gameOverText = this.add.text(400, 300, 'Game Over', { fontSize: '32px', fill: '#fff' });
+            gameOverText.setOrigin(0.5);
+            gameOverText.setVisible(false);  // לא מראה את הטקסט בהתחלה
+
+            // טיימר
+            timerText = this.add.text(400, 50, 'Time: 0', { fontSize: '32px', fill: '#fff' });
+            timerText.setOrigin(0.5);
+            timerEvent = this.time.addEvent({
+                delay: 1000,                // עדכון כל שנייה
+                callback: updateTimer,      // פונקציה שתעודכן כל שנייה
+                loop: true                  // חזור כל הזמן
+            });
+        }
+
+        function update() {
+            // תנועה תמידית של הדמות שמאלה וימינה
+            if (cursors.left.isDown || leftPressed) {
+                player.setVelocityX(-160);
+            } else if (cursors.right.isDown || rightPressed) {
+                player.setVelocityX(160);
+            } else {
+                player.setVelocityX(0);
+            }
+
+            // קפיצה רק אם הדמות על הקרקע
+            if ((cursors.up.isDown || jumpPressed) && player.body.touching.down) {
+                player.setVelocityY(-500);  // קפיצה בגובה 500
+            }
+        }
+
+        function createControls() {
+            const controlsDiv = document.createElement("div");
+            controlsDiv.className = "controls";
+
+            const leftBtn = document.createElement("button");
+            leftBtn.className = "btn";
+            leftBtn.innerText = "⬅";
+            leftBtn.ontouchstart = () => leftPressed = true;
+            leftBtn.ontouchend = () => leftPressed = false;
+
+            const jumpBtn = document.createElement("button");
+            jumpBtn.className = "btn";
+            jumpBtn.innerText = "⬆";
+            jumpBtn.ontouchstart = () => jumpPressed = true;
+            jumpBtn.ontouchend = () => jumpPressed = false;
+
+            const rightBtn = document.createElement("button");
+            rightBtn.className = "btn";
+            rightBtn.innerText = "➡";
+            rightBtn.ontouchstart = () => rightPressed = true;
+            rightBtn.ontouchend = () => rightPressed = false;
+
+            controlsDiv.appendChild(leftBtn);
+            controlsDiv.appendChild(jumpBtn);
+            controlsDiv.appendChild(rightBtn);
+            document.body.appendChild(controlsDiv);
+        }
+
+        // סיום המשחק
+        function gameOver() {
+            gameOverText.setVisible(true);
+            this.physics.pause();  // עוצר את הפיזיקה
+            player.setTint(0xff0000);  // משנה את הצבע של הדמות לאדום
+            timerEvent.paused = true;  // עוצר את הטיימר
+        }
+
+        // עדכון הזמן
+        function updateTimer() {
+            if (!timerEvent.paused) {  // אם הטיימר לא עוצר
+                timeElapsed += 1;  // מוסיף שנייה אחת
+                timerText.setText('Time: ' + timeElapsed);  // מציג את הזמן
+            }
+        }
+
+        // תמיכה במקלדת אם צריך במחשב
+        window.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowLeft") {
+                leftPressed = true;
+            } else if (event.key === "ArrowRight") {
+                rightPressed = true;
+            } else if (event.key === "ArrowUp") {
+                jumpPressed = true;
+            }
+        });
+
+        window.addEventListener("keyup", (event) => {
+            if (event.key === "ArrowLeft") {
+                leftPressed = false;
+            } else if (event.key === "ArrowRight") {
+                rightPressed = false;
+            } else if (event.key === "ArrowUp") {
+                jumpPressed = false;
+            }
+        });
+    </script>
+</body>
+</html>
